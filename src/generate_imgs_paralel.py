@@ -15,10 +15,11 @@ MONO_FONT_SIZE = 16             # Render size matching the patch height
 OUTPUT_DIR = "stripe_text_dataset"
 LOCAL_DATASET_PATH = "./local_fineweb" # Path to where you saved the dataset locally
 MONO_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"  # Linux system monospaced font
-NUM_WORKERS = 8                 # Match this to your SLURM --cpus-per-task
-CHUNKSIZE = 64                  # Larger chunks reduce multiprocessing overhead
+NUM_WORKERS = max(1, (os.cpu_count() or 1) - 1)  # Auto-scale to available CPUs
+CHUNKSIZE = 256                 # Larger chunks reduce multiprocessing overhead
 PNG_COMPRESS_LEVEL = 1          # Lower compression is faster to write
 MAX_ERROR_EXAMPLES = 10         # Keep a few example failures for debugging
+PRELOAD_TEXTS = True            # Avoid per-item dataset indexing bottleneck in parent process
 # ---------------------
 
 # Global variable for the worker processes to hold their own renderer instance
@@ -186,11 +187,16 @@ def main():
         print("No rows available to render. Exiting.")
         os._exit(0)
 
-    # Stream items directly to workers to reduce memory pressure and startup latency.
-    text_items = ((i, dataset[i]["text"]) for i in range(num_items))
+    if PRELOAD_TEXTS:
+        # Batched column read is much faster than per-row indexing for large runs.
+        texts = dataset[:num_items]["text"]
+        text_items = ((i, text) for i, text in enumerate(texts))
+    else:
+        text_items = ((i, dataset[i]["text"]) for i in range(num_items))
 
     # STEP 2: Render in parallel
     print(f"\nRendering {num_items} images using {NUM_WORKERS} CPU cores...")
+    print(f"CPU detected: {os.cpu_count()} | workers={NUM_WORKERS} | chunksize={CHUNKSIZE} | preload_texts={PRELOAD_TEXTS}")
     success_count = 0
     total_chunks_saved = 0
     failure_count = 0
