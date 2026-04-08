@@ -16,7 +16,7 @@ TRAIN_MANIFEST = os.path.join(SPLITS_DIR, "train.txt")
 VAL_MANIFEST = os.path.join(SPLITS_DIR, "val.txt")
 OUTPUT_DIR = "ddpm_text_model"
 CHECKPOINT_DIR = "checkpoints"
-BATCH_SIZE = 128
+BATCH_SIZE = 112
 NUM_EPOCHS = 50           # Start with 50 to see initial convergence
 LEARNING_RATE = 1e-4
 VALIDATE_EVERY = 1        # Run validation every N epochs
@@ -195,6 +195,9 @@ def load_training_checkpoint(accelerator, ckpt_dir):
     return start_epoch, global_step, best_val_loss
 
 def main():
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
     # 1. Initialize Accelerator (Handles GPU setup automatically)
     accelerator = Accelerator(mixed_precision="bf16")
     print(f"Training on device: {accelerator.device}")
@@ -252,6 +255,8 @@ def main():
         train_dataloader,
         val_dataloader,
     )
+
+    model = torch.compile(model)
 
     if accelerator.is_main_process:
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
