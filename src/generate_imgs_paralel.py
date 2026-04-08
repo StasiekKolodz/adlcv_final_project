@@ -71,30 +71,63 @@ def process_single_item(item):
                 "message": "Text is empty after cleaning",
             }
 
-        text_chunks = textwrap.wrap(
-            clean_text,
-            width=MAX_CHARS,
-            break_long_words=False,
-            break_on_hyphens=False,
-        )
+        words = clean_text.split()
+        if not words:
+            return {
+                "ok": False,
+                "idx": idx,
+                "error_type": "NoChunks",
+                "message": "No chunks produced after cleaning",
+            }
+
+        # Pixel-aware chunking: add words until the candidate line no longer fits.
+        # This guarantees saved lines contain only fully visible words.
+        text_chunks = []
+        current_chunk = ""
+        skipped_overlong_words = 0
+
+        for word in words:
+            candidate = word if not current_chunk else f"{current_chunk} {word}"
+            candidate_img = worker_pixel_processor.render_text_image(
+                candidate,
+                block_size=TARGET_HEIGHT,
+                font_size=MONO_FONT_SIZE,
+            )
+
+            if candidate_img.width <= TARGET_WIDTH and candidate_img.height <= TARGET_HEIGHT:
+                current_chunk = candidate
+                continue
+
+            if current_chunk:
+                text_chunks.append(current_chunk)
+                single_word_img = worker_pixel_processor.render_text_image(
+                    word,
+                    block_size=TARGET_HEIGHT,
+                    font_size=MONO_FONT_SIZE,
+                )
+                if single_word_img.width <= TARGET_WIDTH and single_word_img.height <= TARGET_HEIGHT:
+                    current_chunk = word
+                else:
+                    skipped_overlong_words += 1
+                    current_chunk = ""
+            else:
+                skipped_overlong_words += 1
+
+        if current_chunk:
+            text_chunks.append(current_chunk)
 
         if not text_chunks:
             return {
                 "ok": False,
                 "idx": idx,
-                "error_type": "NoChunks",
-                "message": "No chunks produced after wrapping",
+                "error_type": "NoFittingChunks",
+                "message": "No whole-word chunk fits target dimensions",
             }
 
         saved_count = 0
-        skipped_overlong_chunks = 0
+        skipped_overlong_chunks = skipped_overlong_words
 
         for chunk_idx, chunk_text in enumerate(text_chunks):
-            # Keep only whole-word chunks that fit. Any non-fitting chunk is skipped.
-            if len(chunk_text) > MAX_CHARS:
-                skipped_overlong_chunks += 1
-                continue
-
             # Render using this specific worker's initialized processor
             rendered_image = worker_pixel_processor.render_text_image(
                 chunk_text,
