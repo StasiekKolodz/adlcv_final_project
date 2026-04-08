@@ -16,12 +16,14 @@ TRAIN_MANIFEST = os.path.join(SPLITS_DIR, "train.txt")
 VAL_MANIFEST = os.path.join(SPLITS_DIR, "val.txt")
 OUTPUT_DIR = "ddpm_text_model"
 CHECKPOINT_DIR = "checkpoints"
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 NUM_EPOCHS = 50           # Start with 50 to see initial convergence
 LEARNING_RATE = 1e-4
 VALIDATE_EVERY = 1        # Run validation every N epochs
 SAVE_EVERY = 1            # Save checkpoint every N epochs
 RESUME_FROM = "latest"    # "latest", specific checkpoint path, or None
+NUM_WORKERS = 16          # DataLoader workers to keep GPU fed
+PIN_MEMORY = True         # Faster host->GPU transfer when using CUDA
 # ---------------------
 
 class StripeDataset(Dataset):
@@ -202,8 +204,24 @@ def main():
     train_dataset = StripeDataset(DATASET_DIR, manifest_path=TRAIN_MANIFEST)
     val_dataset = StripeDataset(DATASET_DIR, manifest_path=VAL_MANIFEST)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=False)
-    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, drop_last=False)
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        drop_last=False,
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
+        persistent_workers=NUM_WORKERS > 0,
+    )
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        drop_last=False,
+        num_workers=NUM_WORKERS,
+        pin_memory=PIN_MEMORY,
+        persistent_workers=NUM_WORKERS > 0,
+    )
 
     # 3. Define the U-Net Model
     # This is a standard image diffusion architecture, completely off-the-shelf
