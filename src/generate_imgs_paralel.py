@@ -10,7 +10,7 @@ import concurrent.futures
 NUM_IMAGES_TO_GENERATE = 10  # Number of dataset rows to process
 TARGET_HEIGHT = 16              # 1 patch high
 TARGET_WIDTH = 1024             # 64 patches wide (64 * 16)
-MAX_CHARS = TARGET_WIDTH // TARGET_HEIGHT  # Character-aligned target: 1 char per 16px patch -> 64
+MAX_CHARS = 104  # Natural fill: 1024px / ~9.6px per char = ~106. We use 104 for a safe margin.
 MONO_FONT_SIZE = 16             # Render size matching the patch height
 OUTPUT_DIR = "stripe_text_dataset"
 LOCAL_DATASET_PATH = "./local_fineweb" # Path to where you saved the dataset locally
