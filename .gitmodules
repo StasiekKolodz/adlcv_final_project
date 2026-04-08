@@ -1,0 +1,3 @@
+[submodule "pixel-renderer"]
+	path = pixel-renderer
+	url = git@github.com:sign/pixel-renderer.git

@@ -1,0 +1,13 @@
+accelerate==1.10.1
+datasets==4.5.0
+diffusers==0.36.0
+fonttools==4.60.1
+matplotlib==3.9.4
+numpy==2.0.2
+pandas==2.3.3
+pillow==11.3.0
+sentencepiece==0.2.1
+torch==2.8.0
+torchvision==0.23.0
+tqdm==4.67.1
+transformers==4.57.6
