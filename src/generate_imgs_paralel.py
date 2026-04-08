@@ -74,7 +74,7 @@ def process_single_item(item):
         text_chunks = textwrap.wrap(
             clean_text,
             width=MAX_CHARS,
-            break_long_words=True,
+            break_long_words=False,
             break_on_hyphens=False,
         )
 
@@ -87,8 +87,14 @@ def process_single_item(item):
             }
 
         saved_count = 0
+        skipped_overlong_chunks = 0
 
         for chunk_idx, chunk_text in enumerate(text_chunks):
+            # Keep only whole-word chunks that fit. Any non-fitting chunk is skipped.
+            if len(chunk_text) > MAX_CHARS:
+                skipped_overlong_chunks += 1
+                continue
+
             # Render using this specific worker's initialized processor
             rendered_image = worker_pixel_processor.render_text_image(
                 chunk_text,
@@ -110,7 +116,20 @@ def process_single_item(item):
             final_image.save(save_path, optimize=False, compress_level=PNG_COMPRESS_LEVEL)
             saved_count += 1
 
-        return {"ok": True, "idx": idx, "chunks_saved": saved_count}
+        if saved_count == 0 and skipped_overlong_chunks > 0:
+            return {
+                "ok": False,
+                "idx": idx,
+                "error_type": "OverlongWordsOnly",
+                "message": "All chunks were over MAX_CHARS and skipped",
+            }
+
+        return {
+            "ok": True,
+            "idx": idx,
+            "chunks_saved": saved_count,
+            "chunks_skipped_overlong": skipped_overlong_chunks,
+        }
     except Exception as exc:
         return {
             "ok": False,
