@@ -16,6 +16,7 @@ SPLITS_DIR = "splits"
 TRAIN_MANIFEST = os.path.join(SPLITS_DIR, "train.txt")
 VAL_MANIFEST = os.path.join(SPLITS_DIR, "val.txt")
 OUTPUT_DIR = "ddpm_text_model"
+BEST_MODEL_DIR = os.path.join(OUTPUT_DIR, "best_model")
 CHECKPOINT_DIR = "checkpoints"
 LATEST_CHECKPOINT_DIR = os.path.join(CHECKPOINT_DIR, "latest")
 BEST_CHECKPOINT_DIR = os.path.join(CHECKPOINT_DIR, "best")
@@ -322,6 +323,16 @@ def main():
                 best_val_loss = val_loss
                 if accelerator.is_main_process:
                     print(f"New best validation loss: {best_val_loss:.4f}")
+
+                accelerator.wait_for_everyone()
+                if accelerator.is_main_process:
+                    model_to_save = accelerator.unwrap_model(model)
+                    # torch.compile wraps the model; save the original module for compatibility.
+                    if hasattr(model_to_save, "_orig_mod"):
+                        model_to_save = model_to_save._orig_mod
+                    model_to_save.save_pretrained(BEST_MODEL_DIR)
+                    noise_scheduler.save_pretrained(BEST_MODEL_DIR)
+                    print(f"!!! New best model saved to {BEST_MODEL_DIR} !!!")
 
                 save_training_checkpoint(
                     accelerator=accelerator,
