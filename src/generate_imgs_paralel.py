@@ -1,5 +1,6 @@
 import os
 import textwrap
+import multiprocessing as mp
 from collections import Counter
 from datasets import load_from_disk
 from tqdm import tqdm
@@ -15,11 +16,11 @@ MONO_FONT_SIZE = 16             # Render size matching the patch height
 OUTPUT_DIR = "stripe_text_dataset"
 LOCAL_DATASET_PATH = "./local_fineweb" # Path to where you saved the dataset locally
 MONO_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"  # Linux system monospaced font
-NUM_WORKERS = max(1, (os.cpu_count() or 1) - 1)  # Auto-scale to available CPUs
+NUM_WORKERS = min(16, max(1, (os.cpu_count() or 1) - 1))  # Cap workers to avoid init stalls/deadlocks
 CHUNKSIZE = 256                 # Larger chunks reduce multiprocessing overhead
 PNG_COMPRESS_LEVEL = 1          # Lower compression is faster to write
 MAX_ERROR_EXAMPLES = 10         # Keep a few example failures for debugging
-PRELOAD_TEXTS = True            # Avoid per-item dataset indexing bottleneck in parent process
+PRELOAD_TEXTS = False           # Safer default: avoid long upfront load that can look like a hang
 # ---------------------
 
 # Global variable for the worker processes to hold their own renderer instance
@@ -189,8 +190,10 @@ def main():
 
     if PRELOAD_TEXTS:
         # Batched column read is much faster than per-row indexing for large runs.
+        print("Preloading text column into memory...")
         texts = dataset[:num_items]["text"]
         text_items = ((i, text) for i, text in enumerate(texts))
+        print("Text preload complete.")
     else:
         text_items = ((i, dataset[i]["text"]) for i in range(num_items))
 
@@ -203,7 +206,12 @@ def main():
     error_counts = Counter()
     error_examples = []
     
-    with concurrent.futures.ProcessPoolExecutor(max_workers=NUM_WORKERS, initializer=init_worker) as executor:
+    ctx = mp.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=NUM_WORKERS,
+        initializer=init_worker,
+        mp_context=ctx,
+    ) as executor:
         # Stream results instead of collecting all booleans in memory.
         progress = tqdm(
             executor.map(process_single_item, text_items, chunksize=CHUNKSIZE),
