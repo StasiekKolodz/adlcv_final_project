@@ -12,6 +12,7 @@ TARGET_HEIGHT = 16              # 1 patch high
 TARGET_WIDTH = 1024             # 64 patches wide (64 * 16)
 OUTPUT_DIR = "stripe_text_dataset"
 LOCAL_DATASET_PATH = "./local_fineweb" # Path to where you saved the dataset locally
+MONO_FONT_PATH = "./NotoSansMono-Regular.ttf"  # Local monospaced TTF for fixed glyph advance
 NUM_WORKERS = 8                 # Match this to your SLURM --cpus-per-task
 CHUNKSIZE = 64                  # Larger chunks reduce multiprocessing overhead
 PNG_COMPRESS_LEVEL = 1          # Lower compression is faster to write
@@ -30,13 +31,18 @@ def init_worker():
     global worker_pixel_processor
     from pixel_renderer import PixelRendererProcessor
     from font_download import FontConfig
+    from font_download.fonts import FontSource
     
-    # Using the Monospaced font to implement the MONO rendering strategy
-    from font_download.example_fonts.noto_sans import FONTS_NOTO_SANS_MINIMAL
-    
-    # You can pass size=12 (or similar) here if you want to explicitly calculate 
-    # the exact number of characters per 16x16 patch
-    font_config = FontConfig(sources=FONTS_NOTO_SANS_MINIMAL)
+    mono_font_abs = os.path.abspath(MONO_FONT_PATH)
+    if not os.path.exists(mono_font_abs):
+        raise FileNotFoundError(
+            f"Monospaced font file not found: {mono_font_abs}. "
+            "Set MONO_FONT_PATH to a valid .ttf file."
+        )
+
+    # Use local monospaced TTF through a file:// source so FontConfig can load it.
+    mono_source = FontSource(url=f"file://{mono_font_abs}")
+    font_config = FontConfig(sources=[mono_source])
     worker_pixel_processor = PixelRendererProcessor(font=font_config)
 
 def truncate_text(text, max_chars):
