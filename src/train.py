@@ -42,6 +42,13 @@ class StripeDataset(Dataset):
         
         # Tensor shape becomes: (1, 16, 1024)
         tensor = self.transform(img)
+
+        expected_shape = (1, 16, 1024)
+        if tuple(tensor.shape) != expected_shape:
+            raise ValueError(
+                f"Invalid image shape for '{img_path}': got {tuple(tensor.shape)}, "
+                f"expected {expected_shape}."
+            )
         
         # THE RESHAPE HACK: Fold the 16x1024 stripe into a 128x128 square
         folded_tensor = tensor.view(1, 128, 128)
