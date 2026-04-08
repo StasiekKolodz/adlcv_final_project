@@ -16,7 +16,7 @@ TRAIN_MANIFEST = os.path.join(SPLITS_DIR, "train.txt")
 VAL_MANIFEST = os.path.join(SPLITS_DIR, "val.txt")
 OUTPUT_DIR = "ddpm_text_model"
 CHECKPOINT_DIR = "checkpoints"
-BATCH_SIZE = 8            # Lowered from 32 to fit inside 8GB of VRAM
+BATCH_SIZE = 64
 NUM_EPOCHS = 50           # Start with 50 to see initial convergence
 LEARNING_RATE = 1e-4
 VALIDATE_EVERY = 1        # Run validation every N epochs
@@ -194,7 +194,7 @@ def load_training_checkpoint(accelerator, ckpt_dir):
 
 def main():
     # 1. Initialize Accelerator (Handles GPU setup automatically)
-    accelerator = Accelerator()
+    accelerator = Accelerator(mixed_precision="bf16")
     print(f"Training on device: {accelerator.device}")
 
     # 2. Load Dataset and DataLoader
