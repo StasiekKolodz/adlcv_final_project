@@ -16,6 +16,7 @@ NUM_WORKERS = 8                 # Match this to your SLURM --cpus-per-task
 CHUNKSIZE = 64                  # Larger chunks reduce multiprocessing overhead
 PNG_COMPRESS_LEVEL = 1          # Lower compression is faster to write
 MAX_ERROR_EXAMPLES = 10         # Keep a few example failures for debugging
+SENTENCE_ENDINGS = (".", "!", "?", "...", "…", "؟", "।")
 # ---------------------
 
 # Global variable for the worker processes to hold their own renderer instance
@@ -40,17 +41,29 @@ def init_worker():
 
 def truncate_text(text, max_chars):
     """
-    Cleans and truncates the text. 
-    Because we are using a monospaced font, you could technically do a hard cut 
-    (text[:max_chars]), but cutting at the last space keeps words readable.
+    Cleans and truncates text while avoiding sentence-final boundaries when possible.
+    This keeps line ends from consistently matching sentence ends.
     """
-    text = text.replace('\n', ' ').strip()
+    text = " ".join(text.split())
     if len(text) <= max_chars:
         return text
-    
-    chunk = text[:max_chars]
-    last_space = chunk.rfind(' ')
-    return chunk[:last_space] if last_space > 0 else chunk
+
+    # Prefer cutting on a word boundary.
+    cut_idx = text.rfind(" ", 0, max_chars + 1)
+    if cut_idx <= 0:
+        cut_idx = max_chars
+
+    candidate = text[:cut_idx].rstrip()
+
+    # If there is remaining text, avoid ending this line at sentence punctuation.
+    if cut_idx < len(text):
+        while candidate.endswith(SENTENCE_ENDINGS):
+            prev_space = candidate.rfind(" ")
+            if prev_space <= 0:
+                break
+            candidate = candidate[:prev_space].rstrip()
+
+    return candidate if candidate else text[:max_chars].rstrip()
 
 def pad_to_stripe(img, target_width, target_height, background_color=(255, 255, 255)):
     """
