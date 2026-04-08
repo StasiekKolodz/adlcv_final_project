@@ -7,9 +7,10 @@ import concurrent.futures
 
 # --- CONFIGURATION ---
 NUM_IMAGES_TO_GENERATE = 10  
-MAX_CHARS = 55                  # Adjust this after testing 1 image with your specific font size
 TARGET_HEIGHT = 16              # 1 patch high
 TARGET_WIDTH = 1024             # 64 patches wide (64 * 16)
+MAX_CHARS = TARGET_WIDTH // TARGET_HEIGHT  # Character-aligned target: 1 char per 16px patch -> 64
+MONO_FONT_SIZE = 16             # Render size matching the patch height
 OUTPUT_DIR = "stripe_text_dataset"
 LOCAL_DATASET_PATH = "./local_fineweb" # Path to where you saved the dataset locally
 MONO_FONT_PATH = "./NotoSansMono-Regular.ttf"  # Local monospaced TTF for fixed glyph advance
@@ -97,7 +98,11 @@ def process_single_item(item):
             }
 
         # Render using this specific worker's initialized processor
-        rendered_image = worker_pixel_processor.render_text_image(short_text)
+        rendered_image = worker_pixel_processor.render_text_image(
+            short_text,
+            block_size=TARGET_HEIGHT,
+            font_size=MONO_FONT_SIZE,
+        )
 
         # Crop just in case a weird unicode character pushes the height past 16px
         if rendered_image.width > TARGET_WIDTH or rendered_image.height > TARGET_HEIGHT:
