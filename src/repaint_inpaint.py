@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 from torchvision import transforms
 
 # --- CONFIGURATION ---
-CHECKPOINT_DIR = "ddpm_text_model"
+CHECKPOINT_DIR = "checkpoints/epoch_0001"
 
 # If set, this image is used. If None, first path from TEST_MANIFEST is used.
 INPUT_IMAGE_PATH = None
