@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -16,8 +17,10 @@ TRAIN_MANIFEST = os.path.join(SPLITS_DIR, "train.txt")
 VAL_MANIFEST = os.path.join(SPLITS_DIR, "val.txt")
 OUTPUT_DIR = "ddpm_text_model"
 CHECKPOINT_DIR = "checkpoints"
+LATEST_CHECKPOINT_DIR = os.path.join(CHECKPOINT_DIR, "latest")
+BEST_CHECKPOINT_DIR = os.path.join(CHECKPOINT_DIR, "best")
 BATCH_SIZE = 112
-NUM_EPOCHS = 50           # Start with 50 to see initial convergence
+NUM_EPOCHS = 10           # Start with 50 to see initial convergence
 LEARNING_RATE = 1e-4
 VALIDATE_EVERY = 1        # Run validation every N epochs
 SAVE_EVERY = 1            # Save checkpoint every N epochs
@@ -118,52 +121,34 @@ def evaluate(model, dataloader, noise_scheduler, accelerator):
     return totals[0].item() / global_val_steps
 
 
-def _parse_checkpoint_epoch(dirname: str):
-    prefix = "epoch_"
-    if not dirname.startswith(prefix):
-        return None
-    suffix = dirname[len(prefix) :]
-    if not suffix.isdigit():
-        return None
-    return int(suffix)
-
-
 def resolve_resume_checkpoint(resume_from, checkpoint_root):
     if resume_from is None:
         return None
 
+    if resume_from == "latest":
+        latest_dir = os.path.join(checkpoint_root, "latest")
+        return latest_dir if os.path.isdir(latest_dir) else None
+
     if resume_from != "latest":
         return resume_from
-
-    if not os.path.isdir(checkpoint_root):
-        return None
-
-    candidates = []
-    for name in os.listdir(checkpoint_root):
-        epoch_num = _parse_checkpoint_epoch(name)
-        if epoch_num is None:
-            continue
-        full_path = os.path.join(checkpoint_root, name)
-        if os.path.isdir(full_path):
-            candidates.append((epoch_num, full_path))
-
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda x: x[0])
-    return candidates[-1][1]
+    return None
 
 
 def save_training_checkpoint(
     accelerator,
-    checkpoint_root,
+    checkpoint_dir,
     epoch,
     global_step,
     best_val_loss,
 ):
-    ckpt_dir = os.path.join(checkpoint_root, f"epoch_{epoch + 1:04d}")
     accelerator.wait_for_everyone()
-    accelerator.save_state(ckpt_dir)
+    if accelerator.is_main_process:
+        if os.path.isdir(checkpoint_dir):
+            shutil.rmtree(checkpoint_dir)
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
+    accelerator.wait_for_everyone()
+    accelerator.save_state(checkpoint_dir)
 
     if accelerator.is_main_process:
         trainer_state = {
@@ -171,7 +156,7 @@ def save_training_checkpoint(
             "global_step": global_step,
             "best_val_loss": best_val_loss,
         }
-        with open(os.path.join(ckpt_dir, "trainer_state.json"), "w", encoding="utf-8") as f:
+        with open(os.path.join(checkpoint_dir, "trainer_state.json"), "w", encoding="utf-8") as f:
             json.dump(trainer_state, f, indent=2)
 
     accelerator.wait_for_everyone()
@@ -338,16 +323,26 @@ def main():
                 if accelerator.is_main_process:
                     print(f"New best validation loss: {best_val_loss:.4f}")
 
+                save_training_checkpoint(
+                    accelerator=accelerator,
+                    checkpoint_dir=BEST_CHECKPOINT_DIR,
+                    epoch=epoch,
+                    global_step=global_step,
+                    best_val_loss=best_val_loss,
+                )
+                if accelerator.is_main_process:
+                    print(f"Updated best checkpoint at '{BEST_CHECKPOINT_DIR}'.")
+
         if (epoch + 1) % SAVE_EVERY == 0:
             save_training_checkpoint(
                 accelerator=accelerator,
-                checkpoint_root=CHECKPOINT_DIR,
+                checkpoint_dir=LATEST_CHECKPOINT_DIR,
                 epoch=epoch,
                 global_step=global_step,
                 best_val_loss=best_val_loss,
             )
             if accelerator.is_main_process:
-                print(f"Saved checkpoint for epoch {epoch+1} to '{CHECKPOINT_DIR}'.")
+                print(f"Updated latest checkpoint at '{LATEST_CHECKPOINT_DIR}'.")
 
     # 8. Save the final model
     print(f"Saving model to {OUTPUT_DIR}...")
