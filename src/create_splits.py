@@ -1,5 +1,6 @@
 import random
 import re
+import os
 from pathlib import Path
 
 # --- CONFIGURATION ---
@@ -31,10 +32,15 @@ def parse_row_id(filename: str) -> str | None:
     return match.group(1)
 
 
-def write_manifest(path: Path, rel_paths: list[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # One relative path per line for easy loading in Dataset.
-    path.write_text("\n".join(rel_paths) + ("\n" if rel_paths else ""), encoding="utf-8")
+def iter_png_entries(dataset_dir: Path):
+    # Use scandir for faster large-directory traversal with less overhead.
+    with os.scandir(dataset_dir) as entries:
+        for entry in entries:
+            if not entry.is_file():
+                continue
+            if not entry.name.lower().endswith(".png"):
+                continue
+            yield entry.name
 
 
 def main() -> None:
@@ -46,29 +52,30 @@ def main() -> None:
     if not dataset_dir.exists() or not dataset_dir.is_dir():
         raise FileNotFoundError(f"Dataset directory not found: {dataset_dir}")
 
-    all_pngs = sorted(p for p in dataset_dir.iterdir() if p.is_file() and p.suffix.lower() == ".png")
-    if not all_pngs:
-        raise RuntimeError(f"No PNG files found in: {dataset_dir}")
-
-    row_to_files: dict[str, list[str]] = {}
+    # Pass 1: collect unique row IDs only (low memory footprint).
+    row_ids_set: set[str] = set()
+    total_pngs = 0
     skipped = 0
 
-    for png_path in all_pngs:
-        row_id = parse_row_id(png_path.name)
+    for filename in iter_png_entries(dataset_dir):
+        total_pngs += 1
+        row_id = parse_row_id(filename)
         if row_id is None:
             skipped += 1
             continue
+        row_ids_set.add(row_id)
 
-        rel_path = str(png_path.relative_to(dataset_dir))
-        row_to_files.setdefault(row_id, []).append(rel_path)
+    if total_pngs == 0:
+        raise RuntimeError(f"No PNG files found in: {dataset_dir}")
 
-    if not row_to_files:
+    if not row_ids_set:
         raise RuntimeError(
             "No files matched expected pattern 'stripe_<row_id>_<chunk_id>.png'. "
-            f"Checked {len(all_pngs)} png files in {dataset_dir}"
+            f"Checked {total_pngs} png files in {dataset_dir}"
         )
 
-    row_ids = list(row_to_files.keys())
+    # Sort before shuffling so split assignment is deterministic for a fixed seed.
+    row_ids = sorted(row_ids_set)
     rng = random.Random(SEED)
     rng.shuffle(row_ids)
 
@@ -87,22 +94,36 @@ def main() -> None:
     assert len(train_rows & test_rows) == 0
     assert len(val_rows & test_rows) == 0
 
-    train_files: list[str] = []
-    val_files: list[str] = []
-    test_files: list[str] = []
+    output_dir.mkdir(parents=True, exist_ok=True)
+    train_manifest = output_dir / "train.txt"
+    val_manifest = output_dir / "val.txt"
+    test_manifest = output_dir / "test.txt"
 
-    for row_id, files in row_to_files.items():
-        files_sorted = sorted(files)
-        if row_id in train_rows:
-            train_files.extend(files_sorted)
-        elif row_id in val_rows:
-            val_files.extend(files_sorted)
-        else:
-            test_files.extend(files_sorted)
+    train_files = 0
+    val_files = 0
+    test_files = 0
 
-    write_manifest(output_dir / "train.txt", sorted(train_files))
-    write_manifest(output_dir / "val.txt", sorted(val_files))
-    write_manifest(output_dir / "test.txt", sorted(test_files))
+    # Pass 2: stream files directly into manifests (no giant file lists in RAM).
+    with (
+        open(train_manifest, "w", encoding="utf-8") as train_f,
+        open(val_manifest, "w", encoding="utf-8") as val_f,
+        open(test_manifest, "w", encoding="utf-8") as test_f,
+    ):
+        for filename in iter_png_entries(dataset_dir):
+            row_id = parse_row_id(filename)
+            if row_id is None:
+                continue
+
+            rel_path = filename  # Files are expected to be directly under DATASET_DIR.
+            if row_id in train_rows:
+                train_f.write(rel_path + "\n")
+                train_files += 1
+            elif row_id in val_rows:
+                val_f.write(rel_path + "\n")
+                val_files += 1
+            else:
+                test_f.write(rel_path + "\n")
+                test_files += 1
 
     print("Split creation complete")
     print(f"Dataset dir : {dataset_dir}")
@@ -111,8 +132,8 @@ def main() -> None:
     print(f"Rows total  : {n_rows} (train={len(train_rows)}, val={len(val_rows)}, test={len(test_rows)})")
     print(
         "Files total : "
-        f"{len(train_files) + len(val_files) + len(test_files)} "
-        f"(train={len(train_files)}, val={len(val_files)}, test={len(test_files)})"
+        f"{train_files + val_files + test_files} "
+        f"(train={train_files}, val={val_files}, test={test_files})"
     )
     if skipped > 0:
         print(f"Skipped {skipped} PNG files that did not match expected naming pattern.")
