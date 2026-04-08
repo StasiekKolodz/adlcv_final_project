@@ -1,6 +1,7 @@
 import os
 import textwrap
 import multiprocessing as mp
+import time
 from collections import Counter
 from datasets import load_from_disk
 from tqdm import tqdm
@@ -17,7 +18,7 @@ MONO_FONT_SIZE = 16             # Render size matching the patch height
 OUTPUT_DIR = "stripe_text_dataset"
 LOCAL_DATASET_PATH = "./local_fineweb" # Path to where you saved the dataset locally
 MONO_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"  # Linux system monospaced font
-NUM_WORKERS = max(1, min(96, CPU_COUNT - 1))  # Scale on large servers; cap for stability
+NUM_WORKERS = min(32, max(8, CPU_COUNT // 4))  # Stable default for high-core servers
 CHUNKSIZE = 256                 # Larger chunks reduce multiprocessing overhead
 MAX_IN_FLIGHT = max(128, NUM_WORKERS * 8)  # Keep workers fed to avoid idle CPU time
 PNG_COMPRESS_LEVEL = 1          # Lower compression is faster to write
@@ -63,6 +64,7 @@ def process_single_item(item):
     """The generation function executed by each CPU core in parallel."""
     idx, raw_text = item
     try:
+        start_time = time.perf_counter()
         if worker_pixel_processor is None:
             raise RuntimeError("Worker renderer is not initialized")
 
@@ -130,8 +132,10 @@ def process_single_item(item):
 
         saved_count = 0
         skipped_overlong_chunks = skipped_overlong_words
+        render_save_time = 0.0
 
         for chunk_idx, chunk_text in enumerate(text_chunks):
+            chunk_start = time.perf_counter()
             # Render using this specific worker's initialized processor
             rendered_image = worker_pixel_processor.render_text_image(
                 chunk_text,
@@ -152,6 +156,7 @@ def process_single_item(item):
             save_path = os.path.join(OUTPUT_DIR, f"stripe_{idx:06d}_{chunk_idx:02d}.png")
             final_image.save(save_path, optimize=False, compress_level=PNG_COMPRESS_LEVEL)
             saved_count += 1
+            render_save_time += time.perf_counter() - chunk_start
 
         if saved_count == 0 and skipped_overlong_chunks > 0:
             return {
@@ -166,6 +171,8 @@ def process_single_item(item):
             "idx": idx,
             "chunks_saved": saved_count,
             "chunks_skipped_overlong": skipped_overlong_chunks,
+            "row_time_s": time.perf_counter() - start_time,
+            "render_save_time_s": render_save_time,
         }
     except Exception as exc:
         return {
@@ -207,6 +214,10 @@ def main():
     failure_count = 0
     error_counts = Counter()
     error_examples = []
+    total_row_time_s = 0.0
+    total_render_save_time_s = 0.0
+    first_result_time_s = None
+    loop_start = time.perf_counter()
     
     ctx = mp.get_context("spawn")
     with concurrent.futures.ProcessPoolExecutor(
@@ -255,18 +266,23 @@ def main():
                 processed += 1
                 progress.update(1)
 
+                if first_result_time_s is None:
+                    first_result_time_s = time.perf_counter() - loop_start
+
                 while len(futures) < MAX_IN_FLIGHT and submit_next():
                     pass
 
-            if result["ok"]:
-                success_count += 1
-                total_chunks_saved += result.get("chunks_saved", 0)
-            else:
-                failure_count += 1
-                error_type = result.get("error_type", "UnknownError")
-                error_counts[error_type] += 1
-                if len(error_examples) < MAX_ERROR_EXAMPLES:
-                    error_examples.append(result)
+                if result["ok"]:
+                    success_count += 1
+                    total_chunks_saved += result.get("chunks_saved", 0)
+                    total_row_time_s += result.get("row_time_s", 0.0)
+                    total_render_save_time_s += result.get("render_save_time_s", 0.0)
+                else:
+                    failure_count += 1
+                    error_type = result.get("error_type", "UnknownError")
+                    error_counts[error_type] += 1
+                    if len(error_examples) < MAX_ERROR_EXAMPLES:
+                        error_examples.append(result)
 
             if processed % 200 == 0 or processed == num_items:
                 progress.set_postfix({"rows_ok": success_count, "rows_fail": failure_count, "chunks": total_chunks_saved})
@@ -275,6 +291,11 @@ def main():
 
     print(f"\nProcessed rows: {success_count}/{num_items} (failed: {failure_count})")
     print(f"Generated stripe images: {total_chunks_saved} in '{OUTPUT_DIR}'.")
+    if first_result_time_s is not None:
+        print(f"Time to first result: {first_result_time_s:.2f}s")
+    if success_count > 0:
+        print(f"Avg row worker time: {total_row_time_s / success_count:.4f}s")
+        print(f"Avg render/save time per successful row: {total_render_save_time_s / success_count:.4f}s")
     if failure_count > 0:
         print(f"Failed items: {failure_count}")
         print("Failure types:")
