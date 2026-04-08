@@ -8,6 +8,7 @@ from PIL import Image
 import concurrent.futures
 
 # --- CONFIGURATION ---
+CPU_COUNT = os.cpu_count() or 1
 NUM_IMAGES_TO_GENERATE = 15000  # Number of dataset rows to process
 TARGET_HEIGHT = 16              # 1 patch high
 TARGET_WIDTH = 1024             # 64 patches wide (64 * 16)
@@ -16,12 +17,12 @@ MONO_FONT_SIZE = 16             # Render size matching the patch height
 OUTPUT_DIR = "stripe_text_dataset"
 LOCAL_DATASET_PATH = "./local_fineweb" # Path to where you saved the dataset locally
 MONO_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"  # Linux system monospaced font
-NUM_WORKERS = min(16, max(1, (os.cpu_count() or 1) - 1))  # Cap workers to avoid init stalls/deadlocks
+NUM_WORKERS = max(1, min(96, CPU_COUNT - 1))  # Scale on large servers; cap for stability
 CHUNKSIZE = 256                 # Larger chunks reduce multiprocessing overhead
-MAX_IN_FLIGHT = 64              # Number of queued tasks; enables early progress updates
+MAX_IN_FLIGHT = max(128, NUM_WORKERS * 8)  # Keep workers fed to avoid idle CPU time
 PNG_COMPRESS_LEVEL = 1          # Lower compression is faster to write
 MAX_ERROR_EXAMPLES = 10         # Keep a few example failures for debugging
-PRELOAD_TEXTS = False           # Safer default: avoid long upfront load that can look like a hang
+PRELOAD_TEXTS = True            # Better throughput: avoids slow per-row parent indexing
 # ---------------------
 
 # Global variable for the worker processes to hold their own renderer instance
