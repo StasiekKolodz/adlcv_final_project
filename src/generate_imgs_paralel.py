@@ -18,6 +18,7 @@ LOCAL_DATASET_PATH = "./local_fineweb" # Path to where you saved the dataset loc
 MONO_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"  # Linux system monospaced font
 NUM_WORKERS = min(16, max(1, (os.cpu_count() or 1) - 1))  # Cap workers to avoid init stalls/deadlocks
 CHUNKSIZE = 256                 # Larger chunks reduce multiprocessing overhead
+MAX_IN_FLIGHT = 64              # Number of queued tasks; enables early progress updates
 PNG_COMPRESS_LEVEL = 1          # Lower compression is faster to write
 MAX_ERROR_EXAMPLES = 10         # Keep a few example failures for debugging
 PRELOAD_TEXTS = False           # Safer default: avoid long upfront load that can look like a hang
@@ -212,13 +213,50 @@ def main():
         initializer=init_worker,
         mp_context=ctx,
     ) as executor:
-        # Stream results instead of collecting all booleans in memory.
-        progress = tqdm(
-            executor.map(process_single_item, text_items, chunksize=CHUNKSIZE),
-            total=num_items,
-            desc="Rendering",
-        )
-        for i, result in enumerate(progress, start=1):
+        # Use out-of-order completion so long early samples don't stall progress at 0%.
+        progress = tqdm(total=num_items, desc="Rendering")
+        items_iter = iter(text_items)
+        futures = {}
+
+        def submit_next() -> bool:
+            try:
+                item = next(items_iter)
+            except StopIteration:
+                return False
+            future = executor.submit(process_single_item, item)
+            futures[future] = item[0]
+            return True
+
+        initial_submit = min(MAX_IN_FLIGHT, num_items)
+        for _ in range(initial_submit):
+            if not submit_next():
+                break
+
+        processed = 0
+        while futures:
+            done, _ = concurrent.futures.wait(
+                futures,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+
+            for future in done:
+                idx = futures.pop(future)
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    result = {
+                        "ok": False,
+                        "idx": idx,
+                        "error_type": type(exc).__name__,
+                        "message": str(exc)[:200],
+                    }
+
+                processed += 1
+                progress.update(1)
+
+                while len(futures) < MAX_IN_FLIGHT and submit_next():
+                    pass
+
             if result["ok"]:
                 success_count += 1
                 total_chunks_saved += result.get("chunks_saved", 0)
@@ -229,8 +267,10 @@ def main():
                 if len(error_examples) < MAX_ERROR_EXAMPLES:
                     error_examples.append(result)
 
-            if i % 200 == 0 or i == num_items:
+            if processed % 200 == 0 or processed == num_items:
                 progress.set_postfix({"rows_ok": success_count, "rows_fail": failure_count, "chunks": total_chunks_saved})
+
+        progress.close()
 
     print(f"\nProcessed rows: {success_count}/{num_items} (failed: {failure_count})")
     print(f"Generated stripe images: {total_chunks_saved} in '{OUTPUT_DIR}'.")
