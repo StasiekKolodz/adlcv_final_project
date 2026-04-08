@@ -6,7 +6,7 @@ from PIL import Image
 import concurrent.futures
 
 # --- CONFIGURATION ---
-NUM_IMAGES_TO_GENERATE = 10000  
+NUM_IMAGES_TO_GENERATE = 10  
 MAX_CHARS = 55                  # Adjust this after testing 1 image with your specific font size
 TARGET_HEIGHT = 16              # 1 patch high
 TARGET_WIDTH = 1024             # 64 patches wide (64 * 16)

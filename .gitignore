@@ -1,0 +1,48 @@
+local_fineweb/
+
+# Training outputs and generated datasets
+stripe_text_dataset/
+ddpm_text_model/
+outputs/
+runs/
+wandb/
+mlruns/
+lightning_logs/
+tb_logs/
+
+# Checkpoints and model weights
+checkpoints/
+checkpoint/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# Evaluation and prediction artifacts
+predictions/
+inference_outputs/
+
+# Generated images
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
+*.tif
+*.tiff
+
+# Python and tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Environment and local IDE files
+.env
+.venv/
+venv/
+.ipynb_checkpoints/
+.DS_Store
