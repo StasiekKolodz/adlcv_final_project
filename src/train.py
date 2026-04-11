@@ -21,11 +21,11 @@ CHECKPOINT_DIR = "checkpoints"
 LATEST_CHECKPOINT_DIR = os.path.join(CHECKPOINT_DIR, "latest")
 BEST_CHECKPOINT_DIR = os.path.join(CHECKPOINT_DIR, "best")
 BATCH_SIZE = 64
-NUM_EPOCHS = 15           # Start with 50 to see initial convergence
+NUM_EPOCHS = 50           # Total target epochs; must be > resumed epoch to continue training
 LEARNING_RATE = 1e-4
 VALIDATE_EVERY = 1        # Run validation every N epochs
 SAVE_EVERY = 1            # Save checkpoint every N epochs
-RESUME_FROM = "latest"    # "latest", specific checkpoint path, or None
+RESUME_FROM = "latest"    # Resume from checkpoints/latest
 NUM_WORKERS = 16          # DataLoader workers to keep GPU fed
 PIN_MEMORY = True         # Faster host->GPU transfer when using CUDA
 # ---------------------
