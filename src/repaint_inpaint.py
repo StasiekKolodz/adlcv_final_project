@@ -22,8 +22,8 @@ SEED = 42
 
 # Word-level mask definition in stripe (16x1024) coordinates.
 # 1.0 = known/keep, 0.0 = unknown/inpaint.
-CHAR_START = 20
-WORD_LENGTH = 5
+CHAR_START = 17
+WORD_LENGTH = 3
 PIXELS_PER_CHAR = 9.6
 
 # Output paths
