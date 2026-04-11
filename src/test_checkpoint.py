@@ -12,6 +12,7 @@ CHECKPOINT_DIR = "ddpm_text_model"
 
 # If set, this image is used. If None, first path from TEST_MANIFEST is used.
 INPUT_IMAGE_PATH = None
+MANUAL_IMAGE_NAME = None  # Example: "stripe_000123_00.png" from DATASET_DIR
 TEST_MANIFEST = "splits/test.txt"
 DATASET_DIR = "stripe_text_dataset"
 
@@ -30,6 +31,16 @@ def resolve_input_image() -> Path:
         p = Path(INPUT_IMAGE_PATH)
         if not p.exists():
             raise FileNotFoundError(f"INPUT_IMAGE_PATH not found: {p}")
+        return p
+
+    # Manual selection without using split manifests.
+    if MANUAL_IMAGE_NAME is not None:
+        p = Path(DATASET_DIR) / MANUAL_IMAGE_NAME
+        if not p.exists():
+            raise FileNotFoundError(
+                f"MANUAL_IMAGE_NAME not found in DATASET_DIR: {p}. "
+                "Set MANUAL_IMAGE_NAME to an existing PNG filename."
+            )
         return p
 
     manifest_path = Path(TEST_MANIFEST)
