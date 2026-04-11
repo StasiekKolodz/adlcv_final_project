@@ -9,7 +9,7 @@ from diffusers import DDPMScheduler, UNet2DModel
 #   "checkpoints/best"
 #   "ddpm_text_model"
 #   "ddpm_text_model/best_model"
-CHECKPOINT_DIR = "checkpoints/latest"
+CHECKPOINT_DIR = "ddpm_text_model"
 # ---------------------
 
 
