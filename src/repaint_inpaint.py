@@ -152,8 +152,12 @@ def main() -> None:
             f"START_TIMESTEP must be in [1, {scheduler.config.num_train_timesteps - 1}], got {START_TIMESTEP}"
         )
 
+    # Hide unknown region before adding initial noise to avoid leaking the answer.
+    white_tensor = torch.ones_like(clean_folded)
+    masked_clean_folded = (mask * clean_folded) + ((1.0 - mask) * white_tensor)
+
     start_t = torch.tensor([START_TIMESTEP], device=DEVICE, dtype=torch.long)
-    x_t = scheduler.add_noise(clean_folded, torch.randn_like(clean_folded), start_t)
+    x_t = scheduler.add_noise(masked_clean_folded, torch.randn_like(masked_clean_folded), start_t)
 
     timesteps = list(range(START_TIMESTEP, 0, -1))
     pbar = tqdm(timesteps, desc="RePaint")
@@ -176,7 +180,10 @@ def main() -> None:
 
                 # Jump back to t except on the final resample iteration.
                 if rep < RESAMPLING_NUMBER - 1:
-                    x_t = scheduler.add_noise(x_t_minus_1, torch.randn_like(x_t_minus_1), t)
+                    # Single forward diffusion step from t-1 to t.
+                    beta_t = scheduler.betas[step_t].to(device=DEVICE, dtype=x_t_minus_1.dtype).view(1, 1, 1, 1)
+                    noise = torch.randn_like(x_t_minus_1)
+                    x_t = torch.sqrt(1.0 - beta_t) * x_t_minus_1 + torch.sqrt(beta_t) * noise
                 else:
                     x_t = x_t_minus_1
 
@@ -184,8 +191,7 @@ def main() -> None:
     inpainted_pil.save(OUTPUT_INPAINTED)
 
     # For visual review, masked input keeps known regions and whites out unknown regions.
-    white_tensor = torch.ones_like(clean_folded)
-    masked_folded = (mask * clean_folded) + ((1.0 - mask) * white_tensor)
+    masked_folded = masked_clean_folded
 
     original_pil = to_pil_gray(clean_stripe)
     masked_input_pil = to_stripe_image(masked_folded)
