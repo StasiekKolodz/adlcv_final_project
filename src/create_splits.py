@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 
 # --- CONFIGURATION ---
-DATASET_DIR = Path("stripe_text_dataset")
-OUTPUT_DIR = Path("splits")
+DATASET_DIR = Path("../stripe_text_dataset")
+OUTPUT_DIR = Path("../splits")
 TRAIN_RATIO = 0.9
 VAL_RATIO = 0.05
 TEST_RATIO = 0.05
