@@ -11,7 +11,7 @@ from torchvision import transforms
 CHECKPOINT_DIR = "ddpm_text_model"
 
 # If set, this image is used. If None, first path from TEST_MANIFEST is used.
-INPUT_IMAGE_PATH = None
+INPUT_IMAGE_PATH = "stripe_000000_00.png"
 MANUAL_IMAGE_NAME = None  # Example: "stripe_000123_00.png" from DATASET_DIR
 TEST_MANIFEST = "splits/test.txt"
 DATASET_DIR = "stripe_text_dataset"
