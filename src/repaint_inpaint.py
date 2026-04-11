@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 from torchvision import transforms
 
 # --- CONFIGURATION ---
-CHECKPOINT_DIR = "checkpoints/epoch_0001"
+CHECKPOINT_DIR = "ddpm_text_model"
 
 # If set, this image is used. If None, first path from TEST_MANIFEST is used.
 INPUT_IMAGE_PATH = None
@@ -20,12 +20,11 @@ RESAMPLING_NUMBER = 3     # Number of denoise/jump cycles per timestep
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SEED = 42
 
-# Mask definition in folded 128x128 coordinates
-# 1.0 = known/keep, 0.0 = unknown/inpaint
-MASK_Y_START = 60
-MASK_Y_END = 70
-MASK_X_START = 0
-MASK_X_END = 128
+# Word-level mask definition in stripe (16x1024) coordinates.
+# 1.0 = known/keep, 0.0 = unknown/inpaint.
+CHAR_START = 20
+WORD_LENGTH = 5
+PIXELS_PER_CHAR = 9.6
 
 # Output paths
 OUTPUT_INPAINTED = "repaint_inpainted.png"
@@ -72,10 +71,30 @@ def to_pil_gray(tensor_stripe: torch.Tensor) -> Image.Image:
     return pil.convert("L")
 
 
-def build_mask(device: str) -> torch.Tensor:
-    mask = torch.ones((1, 1, 128, 128), device=device)
-    mask[:, :, MASK_Y_START:MASK_Y_END, MASK_X_START:MASK_X_END] = 0.0
-    return mask
+def build_word_mask(device: str, char_start: int, word_length: int) -> torch.Tensor:
+    """Create a word-level mask in stripe space, then fold to 128x128."""
+    if word_length <= 0:
+        raise ValueError(f"WORD_LENGTH must be positive, got {word_length}")
+
+    mask_stripe = torch.ones((1, 1, 16, 1024), device=device)
+
+    pixel_start = int(char_start * PIXELS_PER_CHAR)
+    pixel_end = int(pixel_start + (word_length * PIXELS_PER_CHAR))
+
+    pixel_start = max(0, pixel_start)
+    pixel_end = min(1024, pixel_end)
+
+    if pixel_start >= pixel_end:
+        raise ValueError(
+            f"Computed empty mask range [{pixel_start}, {pixel_end}). "
+            "Adjust CHAR_START/WORD_LENGTH/PIXELS_PER_CHAR."
+        )
+
+    # Mask the selected word region across stripe height.
+    mask_stripe[:, :, :, pixel_start:pixel_end] = 0.0
+
+    # Fold exactly like the input image so mask aligns in model space.
+    return mask_stripe.view(1, 1, 128, 128)
 
 
 def build_review_panel(
@@ -125,7 +144,7 @@ def main() -> None:
         raise ValueError(f"Input image shape mismatch: got {tuple(clean_stripe.shape)}, expected {expected_shape}")
 
     clean_folded = clean_stripe.view(1, 1, 128, 128)
-    mask = build_mask(DEVICE)
+    mask = build_word_mask(DEVICE, CHAR_START, WORD_LENGTH)
 
     # Start from a noised version at START_TIMESTEP.
     if START_TIMESTEP < 1 or START_TIMESTEP >= scheduler.config.num_train_timesteps:
