@@ -10,8 +10,7 @@ import concurrent.futures
 
 # --- CONFIGURATION ---
 CPU_COUNT = os.cpu_count() or 1
-# NUM_IMAGES_TO_GENERATE = 15000  # Number of dataset rows to process
-NUM_IMAGES_TO_GENERATE = 1000  # Number of dataset rows to process
+NUM_IMAGES_TO_GENERATE = 15000  # Number of dataset rows to process
 
 TARGET_HEIGHT = 16              # 1 patch high
 TARGET_WIDTH = 1024             # 64 patches wide (64 * 16)
