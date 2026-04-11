@@ -79,7 +79,7 @@ def build_word_mask(device: str, char_start: int, word_length: int) -> torch.Ten
     mask_stripe = torch.ones((1, 1, 16, 1024), device=device)
 
     # Add a small buffer to fully wipe glyph edges/anti-aliasing around the target word.
-    pixel_start = int(char_start * PIXELS_PER_CHAR) 
+    pixel_start = int(char_start * PIXELS_PER_CHAR) + 8
     pixel_end = int((char_start * PIXELS_PER_CHAR) + (word_length * PIXELS_PER_CHAR)) + 20
 
     pixel_start = max(0, pixel_start)
