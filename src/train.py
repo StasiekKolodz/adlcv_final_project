@@ -20,7 +20,7 @@ BEST_MODEL_DIR = os.path.join(OUTPUT_DIR, "best_model")
 CHECKPOINT_DIR = "checkpoints"
 LATEST_CHECKPOINT_DIR = os.path.join(CHECKPOINT_DIR, "latest")
 BEST_CHECKPOINT_DIR = os.path.join(CHECKPOINT_DIR, "best")
-BATCH_SIZE = 64
+BATCH_SIZE = 96
 NUM_EPOCHS = 50           # Total target epochs; must be > resumed epoch to continue training
 LEARNING_RATE = 1e-4
 VALIDATE_EVERY = 1        # Run validation every N epochs
@@ -185,7 +185,7 @@ def main():
     torch.backends.cudnn.allow_tf32 = True
 
     # 1. Initialize Accelerator (Handles GPU setup automatically)
-    accelerator = Accelerator(mixed_precision="bf16", gradient_accumulation_steps=2)
+    accelerator = Accelerator(mixed_precision="bf16", gradient_accumulation_steps=1)
     print(f"Training on device: {accelerator.device}")
 
     # 2. Load Dataset and DataLoader
