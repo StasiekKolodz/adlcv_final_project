@@ -15,7 +15,7 @@ TEST_MANIFEST = "splits/test.txt"
 DATASET_DIR = "stripe_text_dataset"
 
 # RePaint parameters
-START_TIMESTEP = 250      # Initial corruption level (<= scheduler train timesteps - 1)
+START_TIMESTEP = 500      # Initial corruption level (<= scheduler train timesteps - 1)
 RESAMPLING_NUMBER = 3     # Number of denoise/jump cycles per timestep
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SEED = 42
